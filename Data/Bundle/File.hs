@@ -40,6 +40,7 @@ module Data.Bundle.File (
 
     -- * Reading bundles
     hasBundle, openBundle, withBundle, closeBundle, readBundleFile, readBundle,
+    listBundleFiles,
 
     -- * Creating bundles
     File (..), appendBundle, eraseBundle, replaceBundle
@@ -196,6 +197,10 @@ readBundleFile (Bundle {..}) fp =
         Just (off, sz) -> do
           hSeek bundleHandle SeekFromEnd (fromIntegral off - bundleDataOffset)
           Right <$> BS.hGet bundleHandle (fromIntegral sz)
+
+-- | List all files in the given bundle. Will succeed even on closed bundles.
+listBundleFiles :: Bundle -> [FilePath]
+listBundleFiles = map fst . concat . M.elems . hdrFiles . bundleHeader
 
 -- | Like 'readBundleFile', but attempts to decode the file's contents into an
 --   appropriate Haskell value.
