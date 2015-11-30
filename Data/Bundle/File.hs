@@ -39,10 +39,10 @@ module Data.Bundle.File (
     Bundle,
 
     -- * Reading bundles
-    openBundle, withBundle, closeBundle, readBundleFile, readBundle,
+    hasBundle, openBundle, withBundle, closeBundle, readBundleFile, readBundle,
 
     -- * Creating bundles
-    File (..), writeBundle,
+    File (..), appendBundle, eraseBundle, replaceBundle
   ) where
 import Control.Concurrent
 import Control.Exception
@@ -88,6 +88,22 @@ data Bundle = Bundle {
     bundleLock       :: !(MVar Bool)
   }
 
+-- | Read a bundle static header from the end of a file.
+readStaticHeader :: Handle -> IO (Either String StaticHeader)
+readStaticHeader hdl = do
+  hSeek hdl SeekFromEnd (negate bundleHeaderStaticSize)
+  ehdr <- decode <$> BS.hGet hdl (fromInteger bundleHeaderStaticSize)
+  case ehdr of
+    Left e ->
+        pure (Left $ "unable to parse static header: " ++ e)
+    Right hdr
+      | hdrMagicNumber hdr /= bundleMagicNumber ->
+        pure (Left "not a bundle")
+      | hdrVersion hdr > bundleCurrentVersion ->
+        pure (Left "unsupported bundle version")
+      | otherwise ->
+        pure (Right hdr)
+
 -- | Open a file bundle. The bundle will keep an open handle to its backing
 --   file. The handle will be closed when the bundle is garbage collected.
 --   Use 'closeBundle' to close the handle before the 
@@ -95,34 +111,28 @@ openBundle :: FilePath -> IO (Either String Bundle)
 openBundle fp = flip catch (\(SomeException e) -> pure (Left $ show e)) $ do
   -- Read static header
   hdl <- openBinaryFile fp ReadMode
-  hSeek hdl SeekFromEnd (negate bundleHeaderStaticSize)
-  ehdr <- decode <$> BS.hGet hdl (fromInteger bundleHeaderStaticSize)
-  statichdr <- case ehdr of
-    Right hdr -> pure hdr
-    Left e    -> fail $ "unable to parse static header: " ++ e
+  ehdr <- readStaticHeader hdl
+  case ehdr of
+    Left err        -> pure (Left err)
+    Right statichdr -> do
+      -- Read dynamic header
+      let dynsize = fromIntegral (hdrDynSize statichdr)
+          dynoffset = bundleHeaderStaticSize + dynsize
+      hSeek hdl SeekFromEnd (negate dynoffset)
+      bytes <- BS.hGet hdl (fromInteger dynsize)
 
-  -- Sanity checks
-  when (hdrMagicNumber statichdr /= bundleMagicNumber) $
-    fail "not a bundle"
-  when (hdrVersion statichdr > bundleCurrentVersion) $
-    fail "unsupported bundle version"
-
-  -- Read dynamic header
-  let dynsize = fromIntegral (hdrDynSize statichdr)
-      dynoffset = bundleHeaderStaticSize + dynsize
-  hSeek hdl SeekFromEnd (negate dynoffset)
-  bytes <- BS.hGet hdl (fromInteger dynsize)
-  filehdr <- case runGet (getHdrFiles (hdrNumFiles statichdr)) bytes of
-    Right hdr -> pure hdr
-    Left e    -> fail $ "unable to parse file list: " ++ e
-  let hdr = BundleHeader {
-          hdrFiles = filehdr,
-          hdrStatic = statichdr
-        }
-  lock <- newMVar True
-  let b = Bundle hdr hdl (fromIntegral (hdrDataOffset statichdr)) lock
-  _ <- mkWeakMVar lock (closeBundle b)
-  pure $! Right $! b
+      -- Parse dynamic header and create bundle
+      case runGet (getHdrFiles (hdrNumFiles statichdr)) bytes of
+        Left e        -> fail $ "unable to parse file list: " ++ e
+        Right filehdr -> do
+          let hdr = BundleHeader {
+                hdrFiles = filehdr,
+                hdrStatic = statichdr
+              }
+          lock <- newMVar True
+          let b = Bundle hdr hdl (fromIntegral (hdrDataOffset statichdr)) lock
+          _ <- mkWeakMVar lock (closeBundle b)
+          pure $! Right $! b
 
 -- | Close a bundle before it becomes unreachable. After a bundle is closed,
 --   any read operations performed on it will fail as though the requested
@@ -147,9 +157,12 @@ withBundle fp f = do
   where
     handler (SomeException e) = pure (Left $ show e)
 
--- | Write a bundle to a file.
-writeBundle :: FilePath -> [File] -> IO ()
-writeBundle fp fs = withBinaryFile fp AppendMode $ \hdl -> do
+-- | Write a bundle to a file. If the given file already has a bundle, the new
+--   bundle will be written *after* the old one. The old bundle will thus still
+--   be present in the file, but only the new one will be recognized by
+--   'openBundle' and friends.
+appendBundle :: FilePath -> [File] -> IO ()
+appendBundle fp fs = withBinaryFile fp AppendMode $ \hdl -> do
     (datasize, metadata) <- foldM (packFile hdl) (0, M.empty) fs
     let mdbytes = putHdrFiles metadata
         mdlen   = BS.length mdbytes
@@ -190,3 +203,29 @@ readBundle :: Serialize a => Bundle -> FilePath -> IO (Either String a)
 readBundle b fp = do
   ebytes <- readBundleFile b fp
   pure (ebytes >>= decode)
+
+-- | Does the given file contain a bundle or not?
+hasBundle :: FilePath -> IO Bool
+hasBundle fp = do
+  ehdr <- withBinaryFile fp ReadMode readStaticHeader
+  case ehdr of
+    Right _ -> pure True
+    _       -> pure False
+
+-- | Remove a bundle from an existing file. Does nothing if the given file
+--   does not have a bundle. The given file is *not* removed, even if it only
+--   contains the bundle.
+eraseBundle :: FilePath -> IO ()
+eraseBundle fp = do
+  withBinaryFile fp ReadWriteMode $ \hdl -> do
+    ehdr <- readStaticHeader hdl
+    case ehdr of
+      Right hdr -> do
+        sz <- hFileSize hdl
+        hSetFileSize hdl (sz - fromIntegral (hdrDataOffset hdr))
+      _         -> return ()
+
+-- | Replace the bundle currently attached to the given file. Equivalent to
+--   'appendBundle' if the given file does not already have a bundle attached.
+replaceBundle :: FilePath -> [File] -> IO ()
+replaceBundle fp fs = eraseBundle fp >> appendBundle fp fs
