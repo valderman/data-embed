@@ -8,6 +8,7 @@ import System.Exit
 import System.IO
 
 data Overwrite = Append | Replace | DontOverwrite
+  deriving Show
 
 data Option
   = Write                  -- Write a bundle to an executable
@@ -19,9 +20,10 @@ data Option
   | SetOverwrite Overwrite -- Set overwrite mode
   | SetStrip Int           -- Set the number of leading directories to strip
                            -- from file names added to bundle
+    deriving Show
 
-opts :: [OptDescr Option]
-opts =
+optspec :: [OptDescr Option]
+optspec =
   [ Option "w" ["write"]     (NoArg Write) $
     "Write a bundle to a file. Do nothing if the file already has a bundle."
   , Option "r" ["replace"]   (NoArg (SetOverwrite Replace)) $
@@ -53,7 +55,7 @@ helpHeader = concat
 main :: IO ()
 main = do
   args <- getArgs
-  case getOpt Permute opts args of
+  case getOpt Permute optspec args of
     (opts, nonopts, []) -> runAct (getAction opts) (writeOpts opts) nonopts
     (_, _, errs)        -> mapM_ (hPutStr stderr) errs >> exitFailure
 
@@ -123,8 +125,10 @@ runAct List _ infs = do
       hPutStrLn stderr $ "try `bundletool -l file'"
       exitFailure
 runAct PrintHelp _ _ = do
-  putStr $ usageInfo helpHeader opts
+  putStr $ usageInfo helpHeader optspec
 runAct PrintUsage _ _ = do
   putStrLn "usage: bundletool OPTIONS FILE [FILES]"
   putStrLn "try `bundletool --help' for more information"
   exitFailure
+runAct opt _ _ = do
+  error $ "BUG: option `" ++ show opt ++ "' is not an action!"
