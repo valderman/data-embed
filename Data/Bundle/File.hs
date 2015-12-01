@@ -53,11 +53,14 @@ import Data.Hashable
 import qualified Data.IntMap as M
 import Data.Serialize
 import Data.String
+import System.Directory
 import System.IO
 import Data.Bundle.Header
 
 -- | A file to be included in a bundle. May be either the path to a file on
 --   disk or an actual (path, file) pair.
+--   If a file path refers to a directory, all non-dotfile files and
+--   subdirectories of that directory will be included in the bundle.
 data File = FilePath FilePath | FileData FilePath BS.ByteString
 
 instance IsString File where
@@ -173,8 +176,18 @@ appendBundle fp fs = withBinaryFile fp AppendMode $ \hdl -> do
     BS.hPut hdl mdbytes
     BS.hPut hdl (encode hdr)
   where
-    packFile hdl acc (FilePath p) =
-      BS.readFile p >>= packFile hdl acc . FileData p
+    isDotFile ('.':_) = True
+    isDotFile _       = False
+
+    p </> f = p ++ "/" ++ f
+
+    packFile hdl acc (FilePath p) = do
+      isDir <- doesDirectoryExist p
+      if isDir
+        then do
+          files <- filter (not . isDotFile) <$> getDirectoryContents p
+          foldM (packFile hdl) acc (map (FilePath . (p </>)) files)
+        else BS.readFile p >>= packFile hdl acc . FileData p
     packFile hdl (off, m) (FileData p d) = do
       BS.hPut hdl d
       let len = fromIntegral (BS.length d)
