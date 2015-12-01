@@ -3,7 +3,6 @@ module Main where
 import Control.Monad
 import Data.Bundle.File
 import System.Console.GetOpt
-import System.Directory
 import System.Environment
 import System.Exit
 import System.IO
@@ -18,7 +17,6 @@ data Option
   | PrintHelp              -- Print help message and exit
   | PrintUsage             -- Print usage message and exit
   | SetOverwrite Overwrite -- Set overwrite mode
-  | SetDir FilePath        -- Set bundle base directory
   | SetStrip Int           -- Set the number of leading directories to strip
                            -- from file names added to bundle
 
@@ -32,9 +30,6 @@ opts =
   , Option "a" ["append"]    (NoArg (SetOverwrite Append)) $
     "When writing a bundle to a file, leave the old one in place but " ++
     "append the new one at the end of the file."
-  , Option "C" ["directory"] (ReqArg SetDir "DIR") $
-    "When adding files to a bundle, use DIR as the base directory for that " ++
-    "bundle."
   , Option "p" ["strip"]     (ReqArg (SetStrip . read) "NUM") $
     "Strip up to NUM leading directories from file names added to bundle. " ++
     "`bundletool -p1 -w outfile dir/infile' will add `dir/infile' to the " ++
@@ -63,25 +58,23 @@ main = do
     (_, _, errs)        -> mapM_ (hPutStr stderr) errs >> exitFailure
 
 -- | Extract write options from the given list of options.
-writeOpts :: [Option] -> (Overwrite, Int, FilePath)
-writeOpts = foldl writeOpt (DontOverwrite, 0, ".")
+writeOpts :: [Option] -> (Overwrite, Int)
+writeOpts = foldl writeOpt (DontOverwrite, 0)
   where
-    writeOpt (ovr, s, _) (SetDir d)         = (ovr, s, d)
-    writeOpt (_, s, d)   (SetOverwrite ovr) = (ovr, s, d)
-    writeOpt (ovr, _, d) (SetStrip s)       = (ovr, s, d)
+    writeOpt (_, s)   (SetOverwrite ovr) = (ovr, s)
+    writeOpt (ovr, _) (SetStrip s)       = (ovr, s)
     writeOpt acc      _                     = acc
 
 -- | Get the action to perform from the given list of options.
 getAction :: [Option] -> Option
 getAction = foldl getAct PrintUsage
   where
-    getAct acc (SetDir _)       = acc
     getAct acc (SetOverwrite _) = acc
     getAct acc (SetStrip _)     = acc
     getAct _   act              = act
 
-runAct :: Option -> (Overwrite, Int, FilePath) -> [String] -> IO ()
-runAct Write (ovr, s, dir) fs = do
+runAct :: Option -> (Overwrite, Int) -> [String] -> IO ()
+runAct Write (ovr, s) fs = do
   case fs of
     (outf : infs) | not (null infs) -> do
       alreadyHasBundle <- hasBundle outf
@@ -95,11 +88,7 @@ runAct Write (ovr, s, dir) fs = do
             eraseBundle outf
           _ ->
             return ()
-      curdir <- getCurrentDirectory
-      outf' <- makeRelativeToCurrentDirectory outf
-      setCurrentDirectory dir
-      appendBundle (curdir ++ "/" ++ outf') (map (FilePath s) infs)
-      setCurrentDirectory curdir
+      appendBundle outf (map (FilePath s) infs)
     _ -> do
       hPutStrLn stderr $ "need an output file and at least one input file " ++
                          "to create a bundle"
