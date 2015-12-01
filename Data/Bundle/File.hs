@@ -58,13 +58,18 @@ import System.IO
 import Data.Bundle.Header
 
 -- | A file to be included in a bundle. May be either the path to a file on
---   disk or an actual (path, file) pair.
+--   disk or an actual (path, data) pair.
+--
 --   If a file path refers to a directory, all non-dotfile files and
 --   subdirectories of that directory will be included in the bundle.
-data File = FilePath FilePath | FileData FilePath BS.ByteString
+--   File paths also have a strip number: the number of leading directories
+--   to strip from file names when adding them to a bundle.
+--   For instance, adding @File 1 "foo/bar"@ to a bundle will add the file
+--   @foo/bar@, under the name @bar@ within the bundle.
+data File = FilePath Int FilePath | FileData FilePath BS.ByteString
 
 instance IsString File where
-  fromString = FilePath
+  fromString = FilePath 0
 
 -- | A handle to a file bundle. Bundle handles are obtained using 'openBundle'
 --   or 'withBundle' and start out as open. That is, files may be read from
@@ -181,13 +186,16 @@ appendBundle fp fs = withBinaryFile fp AppendMode $ \hdl -> do
 
     p </> f = p ++ "/" ++ f
 
-    packFile hdl acc (FilePath p) = do
+    stripLeading 0 f = f
+    stripLeading n f = stripLeading (n-1) (drop 1 (dropWhile (/= '/') f))
+
+    packFile hdl acc (FilePath n p) = do
       isDir <- doesDirectoryExist p
       if isDir
         then do
           files <- filter (not . isDotFile) <$> getDirectoryContents p
-          foldM (packFile hdl) acc (map (FilePath . (p </>)) files)
-        else BS.readFile p >>= packFile hdl acc . FileData p
+          foldM (packFile hdl) acc (map (FilePath n . (p </>)) files)
+        else BS.readFile p >>= packFile hdl acc . FileData (stripLeading n p)
     packFile hdl (off, m) (FileData p d) = do
       BS.hPut hdl d
       let len = fromIntegral (BS.length d)
