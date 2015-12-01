@@ -69,6 +69,10 @@ import Data.Bundle.Header
 --   to strip from file names when adding them to a bundle.
 --   For instance, adding @File 1 "foo/bar"@ to a bundle will add the file
 --   @foo/bar@, under the name @bar@ within the bundle.
+--
+--   If a file name would "disappear" entirely due to stripping, for instance
+--   when stripping two directories from @foo/bar@, @bar@ will "disappear"
+--   entirely and so will be silently ignored.
 data File = FilePath Int FilePath | FileData FilePath BS.ByteString
 
 instance IsString File where
@@ -193,12 +197,16 @@ appendBundle fp fs = withBinaryFile fp AppendMode $ \hdl -> do
     stripLeading n f = stripLeading (n-1) (drop 1 (dropWhile (/= '/') f))
 
     packFile hdl acc (FilePath n p) = do
-      isDir <- doesDirectoryExist p
-      if isDir
-        then do
-          files <- filter (not . isDotFile) <$> getDirectoryContents p
-          foldM (packFile hdl) acc (map (FilePath n . (p </>)) files)
-        else BS.readFile p >>= packFile hdl acc . FileData (stripLeading n p)
+      let stripped = stripLeading n p
+      if null stripped
+        then return acc
+        else do
+          isDir <- doesDirectoryExist p
+          if isDir
+            then do
+              files <- filter (not . isDotFile) <$> getDirectoryContents p
+              foldM (packFile hdl) acc (map (FilePath n . (p </>)) files)
+            else BS.readFile p >>= packFile hdl acc . FileData stripped
     packFile hdl (off, m) (FileData p d) = do
       BS.hPut hdl d
       let len = fromIntegral (BS.length d)
