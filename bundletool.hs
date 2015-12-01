@@ -3,6 +3,7 @@ module Main where
 import Control.Monad
 import Data.Bundle.File
 import System.Console.GetOpt
+import System.Directory
 import System.Environment
 import System.Exit
 import System.IO
@@ -10,34 +11,41 @@ import System.IO
 data Overwrite = Append | Replace | DontOverwrite
 
 data Action
-  = Write (Maybe Overwrite) -- Write a bundle to an executable
-  | Erase                   -- Erase an existing bundle
-  | Check                   -- Check if a file contains a bundle or not
-  | List                    -- List all files in a bundle
-  | PrintHelp               -- Print help message and exit
-  | PrintUsage              -- Print usage message and exit
+  = Write (Maybe Overwrite) FilePath -- Write a bundle to an executable
+  | Erase                            -- Erase an existing bundle
+  | Check                            -- Check if a file contains a bundle or not
+  | List                             -- List all files in a bundle
+  | PrintHelp                        -- Print help message and exit
+  | PrintUsage                       -- Print usage message and exit
 
 overwriteMode :: Overwrite -> Action -> Action
-overwriteMode mode (Write _) = Write (Just mode)
-overwriteMode _    act       = act
+overwriteMode mode (Write _ d) = Write (Just mode) d
+overwriteMode _    act         = act
+
+setDir :: FilePath -> Action -> Action
+setDir d (Write ovr _) = Write ovr d
+setDir _ act           = act
 
 opts :: [OptDescr (Action -> Action)]
 opts =
-  [ Option "w" ["write"]   (NoArg (const $ Write Nothing)) $
+  [ Option "w" ["write"]     (NoArg (const $ Write Nothing ".")) $
     "Write a bundle to a file. Do nothing if the file already has a bundle."
-  , Option "r" ["replace"] (NoArg (overwriteMode Replace)) $
+  , Option "r" ["replace"]   (NoArg (overwriteMode Replace)) $
     "When writing a bundle to a file, overwrite any previously existing " ++
     "bundle."
-  , Option "a" ["append"]  (NoArg (overwriteMode Append)) $
+  , Option "a" ["append"]    (NoArg (overwriteMode Append)) $
     "When writing a bundle to a file, leave the old one in place but " ++
     "append the new one at the end of the file."
-  , Option "ed" ["erase"]  (NoArg (const Erase)) $
+  , Option "C" ["directory"] (ReqArg setDir "DIR") $
+    "When adding files to a bundle, use DIR as the base directory for that " ++
+    "bundle."
+  , Option "ed" ["erase"]    (NoArg (const Erase)) $
     "List all files in the given bundle."
-  , Option "l" ["list"]    (NoArg (const List)) $
+  , Option "l" ["list"]      (NoArg (const List)) $
     "List all files in the given bundle."
-  , Option "c" ["check"]   (NoArg (const Check)) $
+  , Option "c" ["check"]     (NoArg (const Check)) $
     "Check whether the given file contains a bundle or not."
-  , Option "?h" ["help"]   (NoArg (const PrintHelp)) $
+  , Option "?h" ["help"]     (NoArg (const PrintHelp)) $
     "Print this message and exit."
   ]
 
@@ -55,7 +63,7 @@ main = do
     (_, _, errs)        -> mapM_ (hPutStr stderr) errs >> exitFailure
 
 runAct :: Action -> [String] -> IO ()
-runAct (Write ovr) fs = do
+runAct (Write ovr dir) fs = do
   case fs of
     (outf : infs) | not (null infs) -> do
       alreadyHasBundle <- hasBundle outf
@@ -69,7 +77,11 @@ runAct (Write ovr) fs = do
             eraseBundle outf
           _ ->
             return ()
-      appendBundle outf (map FilePath infs)
+      curdir <- getCurrentDirectory
+      outf' <- makeRelativeToCurrentDirectory outf
+      setCurrentDirectory dir
+      appendBundle (curdir ++ "/" ++ outf') (map FilePath infs)
+      setCurrentDirectory curdir
     _ -> do
       hPutStrLn stderr $ "need an output file and at least one input file " ++
                          "to create a bundle"
