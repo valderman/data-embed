@@ -35,7 +35,7 @@ opts =
     "`bundletool -p1 -w outfile dir/infile' will add `dir/infile' to the " ++
     "bundle with the name `infile'."
   , Option "ed" ["erase"]    (NoArg Erase) $
-    "List all files in the given bundle."
+    "Erase previously created bundles from any of the given files."
   , Option "l" ["list"]      (NoArg List) $
     "List all files in the given bundle."
   , Option "c" ["check"]     (NoArg Check) $
