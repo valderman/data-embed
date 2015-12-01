@@ -31,7 +31,7 @@ opts =
     "When writing a bundle to a file, leave the old one in place but " ++
     "append the new one at the end of the file."
   , Option "p" ["strip"]     (ReqArg (SetStrip . read) "NUM") $
-    "Strip up to NUM leading directories from file names added to bundle. " ++
+    "Strip up to NUM leading directories from file names added to bundle.\n" ++
     "`bundletool -p1 -w outfile dir/infile' will add `dir/infile' to the " ++
     "bundle with the name `infile'."
   , Option "ed" ["erase"]    (NoArg Erase) $
