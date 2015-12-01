@@ -1,4 +1,10 @@
 -- | This module provides access to files bundled with the current executable.
+--   To bundle files within an executable, use the accompanying @bundletool@
+--   command line tool, or the functions provided in "Data.Bundle.File".
+--
+--   To bundle a directory of data files with an executable, try:
+--
+--   > bundletool -p1 -w my_executable my_data_dir
 module Data.Bundle where
 import qualified Data.ByteString as BS
 import System.IO.Unsafe

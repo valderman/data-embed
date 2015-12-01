@@ -35,6 +35,9 @@
 --   >   hdrDynSize    : Word32
 --   >   hdrVersion    : Word8
 --   >   "BNDLLDNB"    : Word64
+--
+--   The included @bundletool@ program offers a command line interface
+--   for manipulating and inspecting bundles.
 module Data.Bundle.File (
     Bundle,
 
