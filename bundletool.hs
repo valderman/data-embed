@@ -10,42 +10,36 @@ import System.IO
 
 data Overwrite = Append | Replace | DontOverwrite
 
-data Action
-  = Write (Maybe Overwrite) FilePath -- Write a bundle to an executable
-  | Erase                            -- Erase an existing bundle
-  | Check                            -- Check if a file contains a bundle or not
-  | List                             -- List all files in a bundle
-  | PrintHelp                        -- Print help message and exit
-  | PrintUsage                       -- Print usage message and exit
+data Option
+  = Write                  -- Write a bundle to an executable
+  | Erase                  -- Erase an existing bundle
+  | Check                  -- Check if a file contains a bundle or not
+  | List                   -- List all files in a bundle
+  | PrintHelp              -- Print help message and exit
+  | PrintUsage             -- Print usage message and exit
+  | SetOverwrite Overwrite -- Set overwrite mode
+  | SetDir FilePath        -- Set bundle base directory
 
-overwriteMode :: Overwrite -> Action -> Action
-overwriteMode mode (Write _ d) = Write (Just mode) d
-overwriteMode _    act         = act
-
-setDir :: FilePath -> Action -> Action
-setDir d (Write ovr _) = Write ovr d
-setDir _ act           = act
-
-opts :: [OptDescr (Action -> Action)]
+opts :: [OptDescr Option]
 opts =
-  [ Option "w" ["write"]     (NoArg (const $ Write Nothing ".")) $
+  [ Option "w" ["write"]     (NoArg Write) $
     "Write a bundle to a file. Do nothing if the file already has a bundle."
-  , Option "r" ["replace"]   (NoArg (overwriteMode Replace)) $
+  , Option "r" ["replace"]   (NoArg (SetOverwrite Replace)) $
     "When writing a bundle to a file, overwrite any previously existing " ++
     "bundle."
-  , Option "a" ["append"]    (NoArg (overwriteMode Append)) $
+  , Option "a" ["append"]    (NoArg (SetOverwrite Append)) $
     "When writing a bundle to a file, leave the old one in place but " ++
     "append the new one at the end of the file."
-  , Option "C" ["directory"] (ReqArg setDir "DIR") $
+  , Option "C" ["directory"] (ReqArg SetDir "DIR") $
     "When adding files to a bundle, use DIR as the base directory for that " ++
     "bundle."
-  , Option "ed" ["erase"]    (NoArg (const Erase)) $
+  , Option "ed" ["erase"]    (NoArg Erase) $
     "List all files in the given bundle."
-  , Option "l" ["list"]      (NoArg (const List)) $
+  , Option "l" ["list"]      (NoArg List) $
     "List all files in the given bundle."
-  , Option "c" ["check"]     (NoArg (const Check)) $
+  , Option "c" ["check"]     (NoArg Check) $
     "Check whether the given file contains a bundle or not."
-  , Option "?h" ["help"]     (NoArg (const PrintHelp)) $
+  , Option "?h" ["help"]     (NoArg PrintHelp) $
     "Print this message and exit."
   ]
 
@@ -59,16 +53,32 @@ main :: IO ()
 main = do
   args <- getArgs
   case getOpt Permute opts args of
-    (acts, nonopts, []) -> runAct (foldr (flip (.)) id acts PrintUsage) nonopts
+    (opts, nonopts, []) -> runAct (getAction opts) (writeOpts opts) nonopts
     (_, _, errs)        -> mapM_ (hPutStr stderr) errs >> exitFailure
 
-runAct :: Action -> [String] -> IO ()
-runAct (Write ovr dir) fs = do
+-- | Extract write options from the given list of options.
+writeOpts :: [Option] -> (Overwrite, FilePath)
+writeOpts = foldl writeOpt (DontOverwrite, ".")
+  where
+    writeOpt (ovr, _) (SetDir d)         = (ovr, d)
+    writeOpt (_, d)   (SetOverwrite ovr) = (ovr, d)
+    writeOpt acc      _                  = acc
+
+-- | Get the action to perform from the given list of options.
+getAction :: [Option] -> Option
+getAction = foldl getAct PrintUsage
+  where
+    getAct acc (SetDir _)       = acc
+    getAct acc (SetOverwrite _) = acc
+    getAct _   act              = act
+
+runAct :: Option -> (Overwrite, FilePath) -> [String] -> IO ()
+runAct Write (ovr, dir) fs = do
   case fs of
     (outf : infs) | not (null infs) -> do
       alreadyHasBundle <- hasBundle outf
       when alreadyHasBundle $ do
-        case maybe DontOverwrite id ovr of
+        case ovr of
           DontOverwrite -> do
             hPutStrLn stderr $ "file `" ++ outf ++ "' already has a " ++
                                "bundle; aborting"
@@ -87,13 +97,13 @@ runAct (Write ovr dir) fs = do
                          "to create a bundle"
       hPutStrLn stderr $ "try `bundletool -w outfile infile1 [infile2 ...]'"
       exitFailure
-runAct Erase outfs = do
+runAct Erase _ outfs = do
   when (null outfs) $ do
     hPutStrLn stderr $ "need at least one file to erase bundle from"
     hPutStrLn stderr $ "try `bundletool -e file1 [file2 ...]'"
     exitFailure
   mapM_ eraseBundle outfs
-runAct Check infs = do
+runAct Check _ infs = do
   case infs of
     [inf] -> do
       ok <- hasBundle inf
@@ -102,7 +112,7 @@ runAct Check infs = do
       hPutStrLn stderr $ "need exactly one file to check for bundles"
       hPutStrLn stderr $ "try `bundletool -c file'"
       exitFailure
-runAct List infs = do
+runAct List _ infs = do
   case infs of
     [inf] -> do
       res <- withBundle inf (mapM_ putStrLn . listBundleFiles)
@@ -115,9 +125,9 @@ runAct List infs = do
       hPutStrLn stderr $ "need exactly one file to list files from"
       hPutStrLn stderr $ "try `bundletool -l file'"
       exitFailure
-runAct PrintHelp _ = do
+runAct PrintHelp _ _ = do
   putStr $ usageInfo helpHeader opts
-runAct PrintUsage _ = do
+runAct PrintUsage _ _ = do
   putStrLn "usage: bundletool OPTIONS FILE [FILES]"
   putStrLn "try `bundletool --help' for more information"
   exitFailure
