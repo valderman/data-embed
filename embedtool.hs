@@ -49,7 +49,7 @@ optspec =
 helpHeader :: String
 helpHeader = concat
   [ "embedtool creates, modifies and inspects file bundles for use with the "
-  , "`data-bundle' library. It accepts the following options:"
+  , "`data-embed' library. It accepts the following options:"
   ]
 
 main :: IO ()
