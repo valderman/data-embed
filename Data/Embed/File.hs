@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
--- | Reading and writing executable bundles from/to files.
+-- | Reading/writing bundles of embedded files and other data from/to
+--   executables.
 --
 --   A bundle has three parts: the static header, which identifies
 --   a string of bytes as a bundle using a particular version of the format
@@ -38,7 +39,7 @@
 --
 --   The included @bundletool@ program offers a command line interface
 --   for manipulating and inspecting bundles.
-module Data.Bundle.File (
+module Data.Embed.File (
     Bundle,
 
     -- * Reading bundles
@@ -58,7 +59,7 @@ import Data.Serialize
 import Data.String
 import System.Directory
 import System.IO
-import Data.Bundle.Header
+import Data.Embed.Header
 
 -- | A file to be included in a bundle. May be either the path to a file on
 --   disk or an actual (path, data) pair.

@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 -- | The bundle data type, representing a binary bundle attached to an
 --   executable.
-module Data.Bundle.Header where
+module Data.Embed.Header where
 import Control.Monad
 import qualified Data.ByteString as BS
 import Data.ByteString.UTF8

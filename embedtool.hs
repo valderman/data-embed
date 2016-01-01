@@ -1,7 +1,7 @@
--- | Main module for @bundletool@, a command line interface to @data-bundle@.
+-- | Main module for @embedtool@, a command line interface to @data-embed@.
 module Main where
 import Control.Monad
-import Data.Bundle.File
+import Data.Embed.File
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -34,7 +34,7 @@ optspec =
     "append the new one at the end of the file."
   , Option "p" ["strip"]     (ReqArg (SetStrip . read) "NUM") $
     "Strip up to NUM leading directories from file names added to bundle.\n" ++
-    "`bundletool -p1 -w outfile dir/infile' will add `dir/infile' to the " ++
+    "`embedtool -p1 -w outfile dir/infile' will add `dir/infile' to the " ++
     "bundle with the name `infile'."
   , Option "ed" ["erase"]    (NoArg Erase) $
     "Erase previously created bundles from any of the given files."
@@ -48,7 +48,7 @@ optspec =
 
 helpHeader :: String
 helpHeader = concat
-  [ "bundletool creates, modifies and inspects file bundles for use with the "
+  [ "embedtool creates, modifies and inspects file bundles for use with the "
   , "`data-bundle' library. It accepts the following options:"
   ]
 
@@ -94,12 +94,12 @@ runAct Write (ovr, s) fs = do
     _ -> do
       hPutStrLn stderr $ "need an output file and at least one input file " ++
                          "to create a bundle"
-      hPutStrLn stderr $ "try `bundletool -w outfile infile1 [infile2 ...]'"
+      hPutStrLn stderr $ "try `embedtool -w outfile infile1 [infile2 ...]'"
       exitFailure
 runAct Erase _ outfs = do
   when (null outfs) $ do
     hPutStrLn stderr $ "need at least one file to erase bundle from"
-    hPutStrLn stderr $ "try `bundletool -e file1 [file2 ...]'"
+    hPutStrLn stderr $ "try `embedtool -e file1 [file2 ...]'"
     exitFailure
   mapM_ eraseBundle outfs
 runAct Check _ infs = do
@@ -109,7 +109,7 @@ runAct Check _ infs = do
       putStrLn $ if ok then "yes" else "no"
     _ -> do
       hPutStrLn stderr $ "need exactly one file to check for bundles"
-      hPutStrLn stderr $ "try `bundletool -c file'"
+      hPutStrLn stderr $ "try `embedtool -c file'"
       exitFailure
 runAct List _ infs = do
   case infs of
@@ -122,13 +122,13 @@ runAct List _ infs = do
           exitFailure
     _ -> do
       hPutStrLn stderr $ "need exactly one file to list files from"
-      hPutStrLn stderr $ "try `bundletool -l file'"
+      hPutStrLn stderr $ "try `embedtool -l file'"
       exitFailure
 runAct PrintHelp _ _ = do
   putStr $ usageInfo helpHeader optspec
 runAct PrintUsage _ _ = do
-  putStrLn "usage: bundletool OPTIONS FILE [FILES]"
-  putStrLn "try `bundletool --help' for more information"
+  putStrLn "usage: embedtool OPTIONS FILE [FILES]"
+  putStrLn "try `embedtool --help' for more information"
   exitFailure
 runAct opt _ _ = do
   error $ "BUG: option `" ++ show opt ++ "' is not an action!"

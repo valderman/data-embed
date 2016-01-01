@@ -1,8 +1,8 @@
-name:                data-bundle
+name:                data-embed
 version:             0.1.0.0
 synopsis:            Embed files and other binary blobs inside executables without Template Haskell.
 description:         This package provides a Template Haskell-free alternative to <http://hackage.haskell.org/package/file-embed file-embed>. It also provides a versioned, well defined binary format for embedded blobs, as well as library support and command line utilities for manipulating them.
-homepage:            https://github.com/valderman/data-bundle
+homepage:            https://github.com/valderman/data-embed
 license:             MIT
 license-file:        LICENSE
 author:              Anton Ekblad
@@ -11,9 +11,9 @@ category:            Data
 build-type:          Simple
 cabal-version:       >=1.10
 
-executable bundletool
+executable embedtool
   main-is:
-    bundletool.hs
+    embedtool.hs
   build-depends:
     base            >=4.8   && <5,
     cereal          >=0.4   && <0.5,
@@ -30,10 +30,10 @@ executable bundletool
 
 library
   exposed-modules:
-    Data.Bundle,
-    Data.Bundle.File
+    Data.Embed,
+    Data.Embed.File
   other-modules:
-    Data.Bundle.Header
+    Data.Embed.Header
   other-extensions:
     RecordWildCards,
     BangPatterns
